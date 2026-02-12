@@ -1,0 +1,13 @@
+flask
+gunicorn
+pandas
+numpy
+plotly
+python-dotenv
+requests
+reportlab
+psycopg2-binary
+sqlalchemy
+Flask-SQLAlchemy
+psycopg2-binary
+gunicorn
