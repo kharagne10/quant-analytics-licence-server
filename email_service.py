@@ -1,8 +1,8 @@
 import smtplib
 from email.mime.text import MIMEText
 
-EMAIL_EXPEDITEUR = "ton-email@gmail.com"
-EMAIL_MDP = "mot_de_passe_app"
+EMAIL_EXPEDITEUR = "pabouba222@gmail.com"
+EMAIL_MDP = "unzatpuianbbjrds"
 
 def send_licence_email(to_email, licence_key):
     sujet = "Votre clé de licence Quant Analytics"

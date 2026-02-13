@@ -141,7 +141,7 @@ from licence import generate_licence_key
 from email_service import send_licence_email
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://user:pass@host:port/dbname'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:vAVvJtLxKBfPUjptlumAhkotzwqFuiVD@postgres.railway.internal:5432/railway'
 db.init_app(app)
 
 @app.route('/licence', methods=['GET', 'POST'])
