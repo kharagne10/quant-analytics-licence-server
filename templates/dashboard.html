@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard Licences</title>
+</head>
+<body>
+    <h1>Dashboard Gestion Licences</h1>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Client</th>
+                <th>Licence</th>
+                <th>Status</th>
+                <th>Date création</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for licence in licences %}
+            <tr>
+                <td>{{ licence.id }}</td>
+                <td>{{ licence.client_email }}</td>
+                <td>{{ licence.key }}</td>
+                <td>{{ licence.status }}</td>
+                <td>{{ licence.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
