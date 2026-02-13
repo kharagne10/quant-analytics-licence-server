@@ -4,6 +4,9 @@ import sqlite3
 import uuid
 import os
 
+from admin.dashboard import admin_bp
+app.register_blueprint(admin_bp)
+
 DB_FILE = "licences.db"
 ADMIN_PASSWORD = "ADMIN2026"
 LICENCE_DURATION_DAYS = 30
@@ -125,7 +128,52 @@ def verify():
 
 @app.route("/")
 def home():
-    return "Licence Server Running 🚀"
+    return render_template("index.html")
+
+
+from flask import render_template, request, redirect, url_for
+from payments.wave import create_payment_link  # ton module de paiement
+
+from flask import Flask, render_template, request, redirect
+from models import db, Licence
+from payments.wave import create_payment_link
+from licence import generate_licence_key
+from email_service import send_licence_email
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://user:pass@host:port/dbname'
+db.init_app(app)
+
+@app.route('/licence', methods=['GET', 'POST'])
+def licence():
+    if request.method == 'POST':
+        data = request.get_json()  # On reçoit JSON depuis le JS
+        email = data.get('email')
+        amount = data.get('amount')
+        if not email or not amount:
+            return jsonify({"message": "Email et montant requis"}), 400
+
+        # Crée le lien de paiement via ton module Wave
+        payment_url = create_payment_link(email, amount)
+        return redirect(payment_url)
+
+    return render_template('licence.html')
+
+
+@app.route('/webhook/payment', methods=['POST'])
+def payment_webhook():
+    data = request.json
+    if data.get('status') == 'paid':
+        email = data.get('customer_email')
+        licence_key = generate_licence_key(email)
+        # Créer licence en base
+        new_licence = Licence(client_email=email, key=licence_key, status='active')
+        db.session.add(new_licence)
+        db.session.commit()
+        # Envoyer email
+        send_licence_email(email, licence_key)
+    return "OK", 200
+
 
 @app.route("/debug")
 def debug():
