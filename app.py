@@ -1,153 +1,109 @@
-import os
-import uuid
+from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
+import sqlite3
+import uuid
 
-from flask import Flask, request, jsonify, render_template_string
-from flask_sqlalchemy import SQLAlchemy
-
-# ==============================
-# CONFIGURATION
-# ==============================
+# --- CONFIG ---
+DB_FILE = "licences.db"
+ADMIN_PASSWORD = "ADMIN2026"  # ⚠️ à changer pour production
+LICENCE_DURATION_DAYS = 30
 
 app = Flask(__name__)
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# --- DATABASE ---
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS licences (
+            licence_key TEXT PRIMARY KEY,
+            machine_id TEXT,
+            expiry TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+init_db()
 
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-db = SQLAlchemy(app)
-
-# ==============================
-# MODELE LICENCE
-# ==============================
-
-class Licence(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    licence_key = db.Column(db.String(64), unique=True, nullable=False)
-    machine_id = db.Column(db.String(128), nullable=True)
-    expiry_date = db.Column(db.DateTime, nullable=True)
-    is_active = db.Column(db.Boolean, default=False)
-
-# ==============================
-# CREATION TABLES
-# ==============================
-
-with app.app_context():
-    db.create_all()
-
-# ==============================
-# PAGE LICENCE (SITE CLIENT)
-# ==============================
-
-@app.route("/licence")
-def licence_page():
-    return render_template_string("""
-    <h1>Quant Analytics – Licence</h1>
-    <p>Achetez votre licence pour activer le logiciel.</p>
-    <p>Contact : contact@quant-analytics.com</p>
-    """)
-
-# ==============================
-# ADMIN – GENERER CLE (TEMPORAIRE)
-# ==============================
-
-@app.route("/admin/generate")
+# --- GENERATE KEY (admin only) ---
+@app.route("/generate", methods=["POST"])
 def generate_key():
-    new_key = str(uuid.uuid4()).replace("-", "").upper()[:20]
+    data = request.json
+    password = data.get("password")
+    if password != ADMIN_PASSWORD:
+        return jsonify({"error": "Unauthorized"}), 401
 
-    licence = Licence(
-        licence_key=new_key,
-        is_active=False
-    )
+    new_key = str(uuid.uuid4()).upper()[:18]  # Exemple : 18 caractères
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO licences (licence_key) VALUES (?)", (new_key,))
+    conn.commit()
+    conn.close()
+    return jsonify({"key": new_key})
 
-    db.session.add(licence)
-    db.session.commit()
-
-    return jsonify({
-        "status": "ok",
-        "key": new_key
-    })
-
-# ==============================
-# ACTIVATION LICENCE (30 JOURS)
-# ==============================
-
+# --- ACTIVATE LICENCE ---
 @app.route("/api/activate", methods=["POST"])
 def activate():
-    data = request.get_json()
-
+    data = request.json
     licence_key = data.get("licence_key")
     machine_id = data.get("machine_id")
 
     if not licence_key or not machine_id:
-        return jsonify({"status": "error", "message": "Données manquantes"}), 400
+        return jsonify({"status": "error", "message": "Licence key and machine_id required"}), 400
 
-    licence = Licence.query.filter_by(licence_key=licence_key).first()
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT expiry FROM licences WHERE licence_key = ?", (licence_key,))
+    row = c.fetchone()
+    now = datetime.now()
 
-    if not licence:
-        return jsonify({"status": "error", "message": "Clé invalide"}), 400
+    if row:
+        # Déjà activée ? -> Renouveler
+        expiry = datetime.fromisoformat(row[0]) if row[0] else now
+        new_expiry = max(expiry, now) + timedelta(days=LICENCE_DURATION_DAYS)
+        c.execute("UPDATE licences SET machine_id=?, expiry=? WHERE licence_key=?", 
+                  (machine_id, new_expiry.isoformat(), licence_key))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok", "expiry": new_expiry.isoformat()})
+    else:
+        conn.close()
+        return jsonify({"status": "error", "message": "Licence key not found"}), 404
 
-    # Déjà utilisée sur autre machine
-    if licence.machine_id and licence.machine_id != machine_id:
-        return jsonify({
-            "status": "error",
-            "message": "Licence déjà utilisée sur une autre machine"
-        }), 403
-
-    # Activation
-    licence.machine_id = machine_id
-    licence.expiry_date = datetime.utcnow() + timedelta(days=30)
-    licence.is_active = True
-
-    db.session.commit()
-
-    return jsonify({
-        "status": "ok",
-        "expiry": licence.expiry_date.isoformat()
-    })
-
-# ==============================
-# VERIFICATION LICENCE
-# ==============================
-
+# --- VERIFY LICENCE ---
 @app.route("/api/verify", methods=["POST"])
 def verify():
-    data = request.get_json()
-
+    data = request.json
     licence_key = data.get("licence_key")
     machine_id = data.get("machine_id")
 
-    licence = Licence.query.filter_by(licence_key=licence_key).first()
+    if not licence_key or not machine_id:
+        return jsonify({"valid": False, "message": "Licence key and machine_id required"}), 400
 
-    if not licence:
-        return jsonify({"valid": False})
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT machine_id, expiry FROM licences WHERE licence_key=?", (licence_key,))
+    row = c.fetchone()
+    conn.close()
 
-    if licence.machine_id != machine_id:
-        return jsonify({"valid": False})
+    if not row:
+        return jsonify({"valid": False, "message": "Licence not found"}), 404
 
-    if not licence.expiry_date:
-        return jsonify({"valid": False})
+    db_machine_id, expiry_str = row
+    expiry = datetime.fromisoformat(expiry_str) if expiry_str else None
 
-    if licence.expiry_date < datetime.utcnow():
-        return jsonify({"valid": False})
+    if db_machine_id != machine_id:
+        return jsonify({"valid": False, "message": "Machine ID mismatch"}), 403
+    if not expiry or datetime.now() > expiry:
+        return jsonify({"valid": False, "message": "Licence expired"}), 403
 
-    return jsonify({"valid": True})
+    return jsonify({"valid": True, "expiry": expiry.isoformat()})
 
-# ==============================
-# ROUTE TEST
-# ==============================
-
+# --- TEST ---
 @app.route("/")
-def home():
-    return "Quant Analytics Licence Server Running 🚀"
-
-# ==============================
-# LANCEMENT
-# ==============================
+def index():
+    return "Licence Server Running 🚀"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
