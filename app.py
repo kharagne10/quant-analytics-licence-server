@@ -107,10 +107,10 @@ def index():
 
 @app.route("/debug")
 def debug():
-    return "DEBUG OK V2"
+    return "DEBUG OK V3"
 
 
-    print("🔥 VERSION 2 DU SERVEUR 🔥")
+    print("🔥 VERSION 3 DU SERVEUR 🔥")
 
 
 
