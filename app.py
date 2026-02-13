@@ -105,5 +105,14 @@ def verify():
 def index():
     return "Licence Server Running 🚀"
 
+@app.route("/debug")
+def debug():
+    return "DEBUG OK V2"
+
+
+    print("🔥 VERSION 2 DU SERVEUR 🔥")
+
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
