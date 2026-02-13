@@ -1,66 +1,41 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Acheter une licence - Quant Analytics</title>
-    <style>
-        body { font-family: Arial, sans-serif; background-color: #f5f5f5; text-align: center; padding-top: 50px; }
-        h1 { color: #333; }
-        form { display: inline-block; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        input[type="email"], input[type="number"] {
-            padding: 10px; margin: 10px 0; width: 250px; border: 1px solid #ccc; border-radius: 5px;
-        }
-        button {
-            padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;
-        }
-        button:hover { background-color: #218838; }
-        .message { margin-top: 20px; color: green; }
-        .error { margin-top: 20px; color: red; }
-        a { display: inline-block; margin-top: 20px; text-decoration: none; color: #007bff; }
-        a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <h1>Acheter une licence Quant Analytics 🚀</h1>
-    <form id="licenceForm">
-        <input type="email" name="email" placeholder="Votre email" required><br>
-        <input type="number" name="amount" placeholder="Montant (FCFA)" required min="1000"><br>
-        <button type="submit">Payer et recevoir la licence</button>
-    </form>
-    <div class="message" id="message"></div>
-    <a href="/">Retour à l'accueil</a>
+<form id="licence-form">
+    <label>Email :</label>
+    <input type="email" id="email" required>
+    <label>Montant :</label>
+    <input type="number" id="amount" required>
+    <button type="submit">Payer</button>
+</form>
 
-    <script>
-        const form = document.getElementById('licenceForm');
-        const message = document.getElementById('message');
+<div id="result" style="margin-top:20px;"></div>
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            message.textContent = "Redirection vers le paiement...";
-            const formData = new FormData(form);
-            const data = {
-                email: formData.get('email'),
-                amount: formData.get('amount')
-            };
+<script>
+document.getElementById("licence-form").addEventListener("submit", async function(e){
+    e.preventDefault();
 
-            try {
-                const response = await fetch('/licence', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                if (response.redirected) {
-                    window.location.href = response.url;
-                } else {
-                    const resData = await response.json();
-                    message.textContent = resData.message || "Erreur lors du paiement";
-                    message.className = "error";
-                }
-            } catch (err) {
-                message.textContent = "Erreur de connexion au serveur.";
-                message.className = "error";
-            }
-        });
-    </script>
-</body>
-</html>
+    const email = document.getElementById("email").value;
+    const amount = document.getElementById("amount").value;
+
+    // Appel API licence
+    const response = await fetch("/licence", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({email, amount})
+    });
+
+    const data = await response.json();
+
+    if(data.licence_key){
+        document.getElementById("result").innerHTML = `
+            <p><strong>Clé d'activation :</strong> ${data.licence_key}</p>
+            <p>Vous pouvez maintenant activer votre logiciel avec cette clé.</p>
+        `;
+    } else if(data.payment_url){
+        // Pour plus tard si Wave est activé
+        window.location.href = data.payment_url;
+    } else {
+        document.getElementById("result").innerHTML = `<p style="color:red;">Erreur lors de la génération de la clé.</p>`;
+    }
+});
+</script>

@@ -7,37 +7,34 @@ import os
 # Modules externes
 from admin.dashboard import admin_bp
 from models import db, Licence
-from payments.wave import create_payment_link
+# from payments.wave import create_payment_link  # Commenté pour test
 from licence import generate_licence_key
 from email_service import send_licence_email
 
 # ---------------- CONFIG ----------------
-
 DB_FILE = "licences.db"
 ADMIN_PASSWORD = "ADMIN2026"
 LICENCE_DURATION_DAYS = 30
 
 # ---------------- APP INIT ----------------
-
 app = Flask(__name__)
 
 # PostgreSQL (Railway)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db.init_app(app)
 
 # Enregistrement blueprint admin
 app.register_blueprint(admin_bp)
 
 # ---------------- SQLITE DATABASE INIT ----------------
-
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS licences (
             licence_key TEXT PRIMARY KEY,
+            client_email TEXT,
             machine_id TEXT,
             expiry TEXT
         )
@@ -48,7 +45,6 @@ def init_db():
 init_db()
 
 # ---------------- GENERATE LICENCE (ADMIN) ----------------
-
 @app.route("/generate", methods=["POST"])
 def generate_key():
     if not request.is_json:
@@ -71,7 +67,6 @@ def generate_key():
     return jsonify({"key": new_key})
 
 # ---------------- ACTIVATE LICENCE ----------------
-
 @app.route("/api/activate", methods=["POST"])
 def activate():
     if not request.is_json:
@@ -111,7 +106,6 @@ def activate():
     })
 
 # ---------------- VERIFY LICENCE ----------------
-
 @app.route("/api/verify", methods=["POST"])
 def verify():
     if not request.is_json:
@@ -146,13 +140,11 @@ def verify():
     return jsonify({"valid": True})
 
 # ---------------- PAGE ACCUEIL ----------------
-
 @app.route("/")
 def home():
     return render_template("index.html")
 
-# ---------------- PAGE LICENCE (PAIEMENT) ----------------
-
+# ---------------- PAGE LICENCE (TEST SANS PAIEMENT) ----------------
 @app.route('/licence', methods=['GET', 'POST'])
 def licence_page():
     if request.method == 'POST':
@@ -163,42 +155,46 @@ def licence_page():
         if not email or not amount:
             return jsonify({"message": "Email et montant requis"}), 400
 
-        payment_url = create_payment_link(email, amount)
-        return jsonify({"payment_url": payment_url})
+        # Génération clé directement pour test
+        licence_key = generate_licence_key(email)
+
+        # Enregistrer en base SQLite
+        expiry = datetime.utcnow() + timedelta(days=LICENCE_DURATION_DAYS)
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("INSERT INTO licences (licence_key, client_email, expiry) VALUES (?, ?, ?)",
+                  (licence_key, email, expiry.isoformat()))
+        conn.commit()
+        conn.close()
+
+        # Pour plus tard si Wave est activé
+        # payment_url = create_payment_link(email, amount)
+        # return jsonify({"payment_url": payment_url})
+
+        return jsonify({"licence_key": licence_key})
 
     return render_template('licence.html')
 
-# ---------------- WEBHOOK PAIEMENT ----------------
-
+# ---------------- WEBHOOK PAIEMENT (Commenté pour test) ----------------
+"""
 @app.route('/webhook/payment', methods=['POST'])
 def payment_webhook():
     data = request.json
-
     if data and data.get('status') == 'paid':
         email = data.get('customer_email')
-
         licence_key = generate_licence_key(email)
-
-        new_licence = Licence(
-            client_email=email,
-            key=licence_key,
-            status='active'
-        )
-
+        new_licence = Licence(client_email=email, key=licence_key, status='active')
         db.session.add(new_licence)
         db.session.commit()
-
         send_licence_email(email, licence_key)
-
     return "OK", 200
+"""
 
 # ---------------- DEBUG ----------------
-
 @app.route("/debug")
 def debug():
     return "SERVER VERSION OK"
 
 # ---------------- RUN LOCAL ----------------
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
