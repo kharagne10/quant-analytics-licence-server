@@ -1,17 +1,36 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, redirect, url_for
 from datetime import datetime, timedelta
 import sqlite3
 import uuid
 import os
 
+# Modules externes
+from admin.dashboard import admin_bp
+from models import db, Licence
+from payments.wave import create_payment_link
+from licence import generate_licence_key
+from email_service import send_licence_email
+
+# ---------------- CONFIG ----------------
+
 DB_FILE = "licences.db"
 ADMIN_PASSWORD = "ADMIN2026"
 LICENCE_DURATION_DAYS = 30
 
+# ---------------- APP INIT ----------------
+
 app = Flask(__name__)
-from admin.dashboard import admin_bp
+
+# PostgreSQL (Railway)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db.init_app(app)
+
+# Enregistrement blueprint admin
 app.register_blueprint(admin_bp)
-# ---------------- DATABASE ----------------
+
+# ---------------- SQLITE DATABASE INIT ----------------
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -28,7 +47,7 @@ def init_db():
 
 init_db()
 
-# ---------------- GENERATE ----------------
+# ---------------- GENERATE LICENCE (ADMIN) ----------------
 
 @app.route("/generate", methods=["POST"])
 def generate_key():
@@ -51,7 +70,7 @@ def generate_key():
 
     return jsonify({"key": new_key})
 
-# ---------------- ACTIVATE ----------------
+# ---------------- ACTIVATE LICENCE ----------------
 
 @app.route("/api/activate", methods=["POST"])
 def activate():
@@ -91,7 +110,7 @@ def activate():
         "expiry": new_expiry.isoformat()
     })
 
-# ---------------- VERIFY ----------------
+# ---------------- VERIFY LICENCE ----------------
 
 @app.route("/api/verify", methods=["POST"])
 def verify():
@@ -116,62 +135,64 @@ def verify():
     if db_machine_id != machine_id:
         return jsonify({"valid": False})
 
+    if not expiry_str:
+        return jsonify({"valid": False})
+
     expiry = datetime.fromisoformat(expiry_str)
+
     if datetime.utcnow() > expiry:
         return jsonify({"valid": False})
 
     return jsonify({"valid": True})
 
-# ---------------- ROOT ----------------
+# ---------------- PAGE ACCUEIL ----------------
 
 @app.route("/")
 def home():
     return render_template("index.html")
 
-
-from flask import render_template, request, redirect, url_for
-from payments.wave import create_payment_link  # ton module de paiement
-
-from flask import Flask, render_template, request, redirect
-from models import db, Licence
-from payments.wave import create_payment_link
-from licence import generate_licence_key
-from email_service import send_licence_email
-
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:vAVvJtLxKBfPUjptlumAhkotzwqFuiVD@postgres.railway.internal:5432/railway'
-db.init_app(app)
+# ---------------- PAGE LICENCE (PAIEMENT) ----------------
 
 @app.route('/licence', methods=['GET', 'POST'])
-def licence():
+def licence_page():
     if request.method == 'POST':
-        data = request.get_json()  # On reçoit JSON depuis le JS
+        data = request.get_json()
         email = data.get('email')
         amount = data.get('amount')
+
         if not email or not amount:
             return jsonify({"message": "Email et montant requis"}), 400
 
-        # Crée le lien de paiement via ton module Wave
         payment_url = create_payment_link(email, amount)
-        return redirect(payment_url)
+        return jsonify({"payment_url": payment_url})
 
     return render_template('licence.html')
 
+# ---------------- WEBHOOK PAIEMENT ----------------
 
 @app.route('/webhook/payment', methods=['POST'])
 def payment_webhook():
     data = request.json
-    if data.get('status') == 'paid':
+
+    if data and data.get('status') == 'paid':
         email = data.get('customer_email')
+
         licence_key = generate_licence_key(email)
-        # Créer licence en base
-        new_licence = Licence(client_email=email, key=licence_key, status='active')
+
+        new_licence = Licence(
+            client_email=email,
+            key=licence_key,
+            status='active'
+        )
+
         db.session.add(new_licence)
         db.session.commit()
-        # Envoyer email
+
         send_licence_email(email, licence_key)
+
     return "OK", 200
 
+# ---------------- DEBUG ----------------
 
 @app.route("/debug")
 def debug():
@@ -181,4 +202,3 @@ def debug():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
