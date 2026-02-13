@@ -6,7 +6,7 @@ import os
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 DB_FILE = "licences.db"
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")  # mettre en variable d'env
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")  # Mot de passe admin via variable d'env
 LICENCE_DURATION_DAYS = 30
 
 # ---------------- LOGIN ----------------

@@ -190,6 +190,23 @@ def payment_webhook():
     return "OK", 200
 """
 
+from flask import session
+
+# Active les sessions pour stocker si l'admin est connecté
+app.secret_key = os.getenv("SECRET_KEY", "adminme")
+# Page login admin
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == ADMIN_PASSWORD:
+            session['admin_logged_in'] = True
+            return redirect(url_for('admin.dashboard'))
+        else:
+            return render_template('admin_login.html', error="Mot de passe incorrect")
+    return render_template('admin_login.html')
+
+
 # ---------------- DEBUG ----------------
 @app.route("/debug")
 def debug():
