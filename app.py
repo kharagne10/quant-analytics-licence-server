@@ -4,15 +4,13 @@ import sqlite3
 import uuid
 import os
 
-from admin.dashboard import admin_bp
-app.register_blueprint(admin_bp)
-
 DB_FILE = "licences.db"
 ADMIN_PASSWORD = "ADMIN2026"
 LICENCE_DURATION_DAYS = 30
 
 app = Flask(__name__)
-
+from admin.dashboard import admin_bp
+app.register_blueprint(admin_bp)
 # ---------------- DATABASE ----------------
 
 def init_db():
